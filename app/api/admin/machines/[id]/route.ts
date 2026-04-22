@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { deleteMachine, readRoutechContentStore, saveMachine } from '@/lib/content-store'
+import {
+  deleteMachine,
+  readRoutechContentStore,
+  saveMachine,
+} from '@/lib/content-store'
 import { isAdminAuthenticated } from '@/lib/admin-auth'
 import { sanitizeMachinePayload } from '@/lib/machine-utils'
 
@@ -8,7 +12,7 @@ type RouteContext = {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  if (!(await isAdminAuthenticated())) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 
@@ -48,8 +52,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   return NextResponse.json({ machine: savedMachine })
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
-  if (!(await isAdminAuthenticated())) {
+export async function DELETE(request: Request, context: RouteContext) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 

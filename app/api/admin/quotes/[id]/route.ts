@@ -19,7 +19,7 @@ function sanitizeQuoteStatus(status: string | undefined): QuoteStatus {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  if (!(await isAdminAuthenticated())) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 
@@ -38,7 +38,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   })
 
   if (!quote) {
-    return NextResponse.json({ error: 'Orçamento não encontrado.' }, { status: 404 })
+    return NextResponse.json(
+      { error: 'Contato não encontrado.' },
+      { status: 404 }
+    )
   }
 
   return NextResponse.json({ quote })

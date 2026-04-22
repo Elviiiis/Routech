@@ -1,54 +1,83 @@
-import 'server-only'
+import "server-only"
 
-import { createHash, timingSafeEqual } from 'node:crypto'
-import { cookies } from 'next/headers'
-
-export const adminSessionCookieName = 'routech-admin-session'
-
-function getAdminPassword() {
-  return process.env.ROUTECH_ADMIN_PASSWORD || 'routech-admin'
+interface FirebaseLookupUser {
+  localId?: string
+  email?: string
+  emailVerified?: boolean
+  disabled?: boolean
 }
 
-function getAdminSessionValue() {
-  return createHash('sha256')
-    .update(`routech-admin:${getAdminPassword()}`)
-    .digest('hex')
+interface AuthenticatedAdmin {
+  uid: string
+  email: string | null
+  emailVerified: boolean
 }
 
-export async function isAdminAuthenticated() {
-  const cookieStore = await cookies()
-  const sessionValue = cookieStore.get(adminSessionCookieName)?.value
+function getBearerToken(request: Request) {
+  const authorization = request.headers.get("authorization")
 
-  if (!sessionValue) {
-    return false
+  if (!authorization?.startsWith("Bearer ")) {
+    return null
   }
 
-  const expected = Buffer.from(getAdminSessionValue())
-  const received = Buffer.from(sessionValue)
+  const token = authorization.slice("Bearer ".length).trim()
+  return token || null
+}
 
-  if (expected.length !== received.length) {
-    return false
+async function lookupFirebaseUser(
+  idToken: string
+): Promise<AuthenticatedAdmin | null> {
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.trim()
+
+  if (!apiKey) {
+    return null
   }
 
-  return timingSafeEqual(expected, received)
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ idToken }),
+      cache: "no-store",
+    }
+  )
+
+  const payload = (await response.json().catch(() => null)) as
+    | { users?: FirebaseLookupUser[] }
+    | null
+
+  const user = payload?.users?.[0]
+
+  if (!response.ok || !user?.localId || user.disabled) {
+    return null
+  }
+
+  return {
+    uid: user.localId,
+    email: user.email || null,
+    emailVerified: Boolean(user.emailVerified),
+  }
 }
 
-export async function setAdminSession() {
-  const cookieStore = await cookies()
-  cookieStore.set(adminSessionCookieName, getAdminSessionValue(), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 12,
-  })
+export async function getAuthenticatedAdmin(
+  request: Request
+): Promise<AuthenticatedAdmin | null> {
+  const token = getBearerToken(request)
+
+  if (!token) {
+    return null
+  }
+
+  try {
+    return await lookupFirebaseUser(token)
+  } catch {
+    return null
+  }
 }
 
-export async function clearAdminSession() {
-  const cookieStore = await cookies()
-  cookieStore.delete(adminSessionCookieName)
-}
-
-export function verifyAdminPassword(password: string) {
-  return password === getAdminPassword()
+export async function isAdminAuthenticated(request: Request) {
+  return Boolean(await getAuthenticatedAdmin(request))
 }

@@ -3,12 +3,17 @@
 import Image from "next/image"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { signOut } from "firebase/auth"
 import { Plus, RefreshCcw, Trash2 } from "lucide-react"
+import { CloudinaryUploader } from "@/components/admin/cloudinary-uploader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { CloudinaryUploader } from "@/components/admin/cloudinary-uploader"
+import {
+  getFirebaseAuth,
+  getFirebaseAuthorizationHeaders,
+} from "@/lib/firebase-client"
 import type {
   Machine,
   MachineImageAsset,
@@ -55,6 +60,24 @@ function createBlankMachine() {
   }
 }
 
+async function authorizedFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const headers = new Headers(init?.headers)
+  const authorizationHeaders = await getFirebaseAuthorizationHeaders()
+
+  Object.entries(authorizationHeaders).forEach(([key, value]) => {
+    headers.set(key, value)
+  })
+
+  return fetch(input, {
+    ...init,
+    headers,
+  })
+}
+
+async function parseJsonResponse<T>(response: Response) {
+  return (await response.json().catch(() => null)) as T | null
+}
+
 export function AdminDashboard({
   initialMachines,
   initialQuotes,
@@ -79,7 +102,12 @@ export function AdminDashboard({
   )
 
   const handleLogout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" })
+    const auth = getFirebaseAuth()
+
+    if (auth) {
+      await signOut(auth)
+    }
+
     router.refresh()
   }
 
@@ -97,7 +125,9 @@ export function AdminDashboard({
       ...machine,
       features: machine.features.length > 0 ? machine.features : [""],
       specifications:
-        machine.specifications.length > 0 ? machine.specifications : [createSpecification()],
+        machine.specifications.length > 0
+          ? machine.specifications
+          : [createSpecification()],
     })
     setActiveTab("machines")
     setMachineFeedback("")
@@ -131,6 +161,7 @@ export function AdminDashboard({
     setMachineForm((current) => {
       const features = [...current.features]
       features[index] = value
+
       return {
         ...current,
         features,
@@ -147,7 +178,10 @@ export function AdminDashboard({
 
   const removeFeature = (index: number) => {
     setMachineForm((current) => {
-      const features = current.features.filter((_, featureIndex) => featureIndex !== index)
+      const features = current.features.filter(
+        (_, featureIndex) => featureIndex !== index
+      )
+
       return {
         ...current,
         features: features.length > 0 ? features : [""],
@@ -189,7 +223,8 @@ export function AdminDashboard({
 
       return {
         ...current,
-        specifications: specifications.length > 0 ? specifications : [createSpecification()],
+        specifications:
+          specifications.length > 0 ? specifications : [createSpecification()],
       }
     })
   }
@@ -223,35 +258,48 @@ export function AdminDashboard({
         ? "/api/admin/machines"
         : `/api/admin/machines/${machineForm.id}`
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(machineForm),
-    })
+    try {
+      const response = await authorizedFetch(endpoint, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(machineForm),
+      })
 
-    const payload = (await response.json().catch(() => null)) as
-      | { machine?: Machine; error?: string }
-      | null
+      const payload = await parseJsonResponse<{
+        machine?: Machine
+        error?: string
+      }>(response)
 
-    if (!response.ok || !payload?.machine) {
-      setMachineFeedback(payload?.error || "Não foi possível salvar a máquina.")
+      if (!response.ok || !payload?.machine) {
+        setMachineFeedback(
+          payload?.error || "Nao foi possivel salvar a maquina."
+        )
+        return
+      }
+
+      setMachines((current) =>
+        sortMachines(
+          current.some((machine) => machine.id === payload.machine?.id)
+            ? current.map((machine) =>
+                machine.id === payload.machine?.id ? payload.machine! : machine
+              )
+            : [payload.machine!, ...current]
+        )
+      )
+      setMachineForm(payload.machine)
+      setMachineFeedback("Maquina salva com sucesso.")
+      router.refresh()
+    } catch (error) {
+      setMachineFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar a maquina."
+      )
+    } finally {
       setIsSavingMachine(false)
-      return
     }
-
-    setMachines((current) => sortMachines(
-      current.some((machine) => machine.id === payload.machine?.id)
-        ? current.map((machine) =>
-            machine.id === payload.machine?.id ? payload.machine! : machine
-          )
-        : [payload.machine!, ...current]
-    ))
-    setMachineForm(payload.machine)
-    setMachineFeedback("Máquina salva com sucesso.")
-    setIsSavingMachine(false)
-    router.refresh()
   }
 
   const removeCurrentMachine = async () => {
@@ -260,62 +308,93 @@ export function AdminDashboard({
       return
     }
 
-    const confirmed = window.confirm("Deseja remover esta máquina do catálogo?")
+    const confirmed = window.confirm(
+      "Deseja remover esta maquina do catalogo?"
+    )
+
     if (!confirmed) {
       return
     }
 
-    const response = await fetch(`/api/admin/machines/${machineForm.id}`, {
-      method: "DELETE",
-    })
+    setMachineFeedback("")
 
-    if (!response.ok) {
-      setMachineFeedback("Não foi possível remover a máquina.")
-      return
+    try {
+      const response = await authorizedFetch(
+        `/api/admin/machines/${machineForm.id}`,
+        {
+          method: "DELETE",
+        }
+      )
+
+      const payload = await parseJsonResponse<{ error?: string }>(response)
+
+      if (!response.ok) {
+        setMachineFeedback(
+          payload?.error || "Nao foi possivel remover a maquina."
+        )
+        return
+      }
+
+      setMachines((current) =>
+        sortMachines(current.filter((machine) => machine.id !== machineForm.id))
+      )
+
+      if (showcase.featuredMachineId === machineForm.id) {
+        setShowcase((current) => ({
+          ...current,
+          featuredMachineId: null,
+        }))
+      }
+
+      resetMachineForm()
+      setMachineFeedback("Maquina removida com sucesso.")
+      router.refresh()
+    } catch (error) {
+      setMachineFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel remover a maquina."
+      )
     }
-
-    setMachines((current) =>
-      sortMachines(current.filter((machine) => machine.id !== machineForm.id))
-    )
-
-    if (showcase.featuredMachineId === machineForm.id) {
-      setShowcase((current) => ({
-        ...current,
-        featuredMachineId: null,
-      }))
-    }
-
-    resetMachineForm()
-    setMachineFeedback("Máquina removida com sucesso.")
-    router.refresh()
   }
 
   const saveShowcase = async () => {
     setIsSavingShowcase(true)
     setShowcaseFeedback("")
 
-    const response = await fetch("/api/admin/showcase", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(showcase),
-    })
+    try {
+      const response = await authorizedFetch("/api/admin/showcase", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(showcase),
+      })
 
-    const payload = (await response.json().catch(() => null)) as
-      | { showcase?: ShowcaseSettings; error?: string }
-      | null
+      const payload = await parseJsonResponse<{
+        showcase?: ShowcaseSettings
+        error?: string
+      }>(response)
 
-    if (!response.ok || !payload?.showcase) {
-      setShowcaseFeedback(payload?.error || "Não foi possível salvar a vitrine.")
+      if (!response.ok || !payload?.showcase) {
+        setShowcaseFeedback(
+          payload?.error || "Nao foi possivel salvar o destaque."
+        )
+        return
+      }
+
+      setShowcase(payload.showcase)
+      setShowcaseFeedback("Destaque principal atualizado com sucesso.")
+      router.refresh()
+    } catch (error) {
+      setShowcaseFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o destaque."
+      )
+    } finally {
       setIsSavingShowcase(false)
-      return
     }
-
-    setShowcase(payload.showcase)
-    setShowcaseFeedback("Vitrine principal atualizada com sucesso.")
-    setIsSavingShowcase(false)
-    router.refresh()
   }
 
   const updateQuoteStatus = async (
@@ -324,58 +403,71 @@ export function AdminDashboard({
   ) => {
     setQuoteFeedback("")
 
-    const response = await fetch(`/api/admin/quotes/${quoteId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(updates),
-    })
+    try {
+      const response = await authorizedFetch(`/api/admin/quotes/${quoteId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updates),
+      })
 
-    const payload = (await response.json().catch(() => null)) as
-      | { quote?: QuoteRequest; error?: string }
-      | null
+      const payload = await parseJsonResponse<{
+        quote?: QuoteRequest
+        error?: string
+      }>(response)
 
-    if (!response.ok || !payload?.quote) {
-      setQuoteFeedback(payload?.error || "Não foi possível atualizar o orçamento.")
-      return
-    }
+      if (!response.ok || !payload?.quote) {
+        setQuoteFeedback(
+          payload?.error || "Nao foi possivel atualizar o contato."
+        )
+        return
+      }
 
-    setQuotes((current) =>
-      sortQuotes(
-        current.map((quote) =>
-          quote.id === payload.quote?.id ? payload.quote! : quote
+      setQuotes((current) =>
+        sortQuotes(
+          current.map((quote) =>
+            quote.id === payload.quote?.id ? payload.quote! : quote
+          )
         )
       )
-    )
-    setQuoteFeedback("Orçamento atualizado.")
-    router.refresh()
+      setQuoteFeedback("Contato atualizado.")
+      router.refresh()
+    } catch (error) {
+      setQuoteFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar o contato."
+      )
+    }
   }
 
-  const summary = useMemo(() => {
-    return {
+  const summary = useMemo(
+    () => ({
       totalMachines: machines.length,
       publishedMachines: publishedMachines.length,
       totalQuotes: quotes.length,
       newQuotes: quotes.filter((quote) => quote.status === "new").length,
-    }
-  }, [machines, publishedMachines.length, quotes])
+    }),
+    [machines, publishedMachines, quotes]
+  )
 
   const featuredMachine =
     machines.find((machine) => machine.id === showcase.featuredMachineId) || null
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.25em] text-primary">
               Area de edicao
             </p>
-            <h1 className="mt-3 text-3xl lg:text-4xl font-bold text-foreground">
-              Edite maquinas, destaque da home e contatos recebidos
+            <h1 className="mt-3 text-3xl font-bold text-foreground lg:text-4xl">
+              Edite maquinas, o destaque da home e os contatos recebidos
             </h1>
           </div>
+
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={handleGoToSite}>
               Voltar ao site
@@ -401,18 +493,21 @@ export function AdminDashboard({
               {summary.totalMachines}
             </p>
           </div>
+
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="text-sm text-muted-foreground">Visiveis no site</p>
             <p className="mt-2 text-3xl font-bold text-foreground">
               {summary.publishedMachines}
             </p>
           </div>
+
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="text-sm text-muted-foreground">Contatos recebidos</p>
             <p className="mt-2 text-3xl font-bold text-foreground">
               {summary.totalQuotes}
             </p>
           </div>
+
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="text-sm text-muted-foreground">Novos contatos</p>
             <p className="mt-2 text-3xl font-bold text-foreground">
@@ -467,15 +562,17 @@ export function AdminDashboard({
                             {machine.badge || machine.category}
                           </p>
                           <h3 className="mt-2 text-lg font-semibold text-foreground">
-                            {machine.title || "Máquina sem título"}
+                            {machine.title || "Maquina sem titulo"}
                           </h3>
                           <p className="mt-2 text-sm text-muted-foreground">
-                            {machine.shortDescription || "Descrição curta não preenchida."}
+                            {machine.shortDescription ||
+                              "Descricao curta nao preenchida."}
                           </p>
                         </div>
+
                         <div className="text-right">
                           <p className="text-xs text-muted-foreground">
-                            {machine.published ? "No site" : "Oculto"}
+                            {machine.published ? "No site" : "Oculta"}
                           </p>
                           <p className="mt-2 text-sm font-medium text-foreground">
                             {price ? price.price : "Sob consulta"}
@@ -488,13 +585,13 @@ export function AdminDashboard({
               ) : (
                 <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
                   <p className="text-muted-foreground">
-                    Nenhuma máquina cadastrada ainda.
+                    Nenhuma maquina cadastrada ainda.
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="rounded-3xl border border-border bg-card p-6 lg:p-8 space-y-8">
+            <div className="space-y-8 rounded-3xl border border-border bg-card p-6 lg:p-8">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Formulario</p>
@@ -504,6 +601,7 @@ export function AdminDashboard({
                       : "Nova maquina"}
                   </h2>
                 </div>
+
                 <div className="flex gap-3">
                   <Button variant="outline" onClick={resetMachineForm}>
                     Nova ficha
@@ -527,9 +625,10 @@ export function AdminDashboard({
                     onChange={(event) =>
                       handleMachineFieldChange("title", event.target.value)
                     }
-                    placeholder="Nome da máquina"
+                    placeholder="Nome da maquina"
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="slug">Link da pagina</Label>
                   <Input
@@ -544,7 +643,7 @@ export function AdminDashboard({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="shortDescription">Descrição curta</Label>
+                <Label htmlFor="shortDescription">Descricao curta</Label>
                 <Textarea
                   id="shortDescription"
                   value={machineForm.shortDescription}
@@ -552,12 +651,12 @@ export function AdminDashboard({
                     handleMachineFieldChange("shortDescription", event.target.value)
                   }
                   rows={3}
-                  placeholder="Resumo exibido nos cards da LP."
+                  placeholder="Resumo exibido nos cards do site."
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Descrição completa</Label>
+                <Label htmlFor="description">Descricao completa</Label>
                 <Textarea
                   id="description"
                   value={machineForm.description}
@@ -565,7 +664,7 @@ export function AdminDashboard({
                     handleMachineFieldChange("description", event.target.value)
                   }
                   rows={6}
-                  placeholder="Descrição completa da página de detalhes."
+                  placeholder="Texto completo da pagina da maquina."
                 />
               </div>
 
@@ -578,9 +677,10 @@ export function AdminDashboard({
                     onChange={(event) =>
                       handleMachineFieldChange("category", event.target.value)
                     }
-                    placeholder="Máquina CNC"
+                    placeholder="Maquina CNC"
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="badge">Selo curto</Label>
                   <Input
@@ -589,9 +689,10 @@ export function AdminDashboard({
                     onChange={(event) =>
                       handleMachineFieldChange("badge", event.target.value)
                     }
-                    placeholder="Destaque, Promocao..."
+                    placeholder="Destaque, promocao..."
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="ctaLabel">Texto do botao</Label>
                   <Input
@@ -600,7 +701,7 @@ export function AdminDashboard({
                     onChange={(event) =>
                       handleMachineFieldChange("ctaLabel", event.target.value)
                     }
-                    placeholder="Solicitar orçamento"
+                    placeholder="Solicitar orcamento"
                   />
                 </div>
               </div>
@@ -614,12 +715,13 @@ export function AdminDashboard({
                     onChange={(event) =>
                       handleMachineFieldChange("priceMode", event.target.value)
                     }
-                    className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                    className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >
-                    <option value="quote">Solicitar orçamento</option>
-                    <option value="visible">Preço visível</option>
+                    <option value="quote">Solicitar orcamento</option>
+                    <option value="visible">Preco visivel</option>
                   </select>
                 </div>
+
                 <div className="flex items-center gap-3 pt-7">
                   <input
                     id="published"
@@ -636,7 +738,7 @@ export function AdminDashboard({
               {machineForm.priceMode === "visible" ? (
                 <div className="grid gap-5 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="price">Preço</Label>
+                    <Label htmlFor="price">Preco</Label>
                     <Input
                       id="price"
                       value={machineForm.price}
@@ -646,6 +748,7 @@ export function AdminDashboard({
                       placeholder="R$ 19.990"
                     />
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="compareAtPrice">Preco anterior</Label>
                     <Input
@@ -657,6 +760,7 @@ export function AdminDashboard({
                       placeholder="R$ 22.990"
                     />
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="priceLabel">Texto acima do preco</Label>
                     <Input
@@ -665,7 +769,7 @@ export function AdminDashboard({
                       onChange={(event) =>
                         handleMachineFieldChange("priceLabel", event.target.value)
                       }
-                      placeholder="Preço promocional"
+                      placeholder="Preco promocional"
                     />
                   </div>
                 </div>
@@ -678,8 +782,8 @@ export function AdminDashboard({
                   disabled={!cloudinaryEnabled}
                   helperText={
                     cloudinaryEnabled
-                      ? "Envie a imagem de capa da máquina."
-                      : "Configure o Cloudinary no .env para habilitar uploads."
+                      ? "Envie a imagem principal da maquina."
+                      : "Configure o Cloudinary para habilitar uploads."
                   }
                   onUploaded={(image) => handleMachineFieldChange("mainImage", image)}
                 />
@@ -689,7 +793,7 @@ export function AdminDashboard({
                     label="Outras fotos"
                     disabled={!cloudinaryEnabled}
                     multiple
-                    helperText="As imagens enviadas entram na galeria e podem aparecer na LP."
+                    helperText="As imagens entram na galeria da maquina."
                     onUploaded={addGalleryImage}
                   />
 
@@ -698,17 +802,18 @@ export function AdminDashboard({
                       {machineForm.gallery.map((image) => (
                         <div
                           key={image.publicId}
-                          className="rounded-xl border border-border overflow-hidden bg-secondary/30"
+                          className="overflow-hidden rounded-xl border border-border bg-secondary/30"
                         >
                           <div className="relative aspect-square">
                             <Image
                               src={image.url}
-                              alt="Galeria"
+                              alt="Galeria da maquina"
                               fill
                               sizes="160px"
                               className="object-cover"
                             />
                           </div>
+
                           <button
                             type="button"
                             onClick={() => removeGalleryImage(image.publicId)}
@@ -726,22 +831,28 @@ export function AdminDashboard({
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">Destaques</h3>
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Destaques
+                    </h3>
                     <p className="text-sm text-muted-foreground">
                       Liste os principais diferenciais mostrados no site.
                     </p>
                   </div>
+
                   <Button variant="outline" onClick={addFeature}>
                     Adicionar destaque
                   </Button>
                 </div>
+
                 <div className="space-y-3">
                   {machineForm.features.map((feature, index) => (
-                    <div key={index} className="flex gap-3">
+                    <div key={`${machineForm.id}-feature-${index}`} className="flex gap-3">
                       <Input
                         value={feature}
-                        onChange={(event) => handleFeatureChange(index, event.target.value)}
-                        placeholder="Ex.: Área de trabalho ampla"
+                        onChange={(event) =>
+                          handleFeatureChange(index, event.target.value)
+                        }
+                        placeholder="Ex.: area de trabalho ampla"
                       />
                       <Button
                         variant="outline"
@@ -762,27 +873,40 @@ export function AdminDashboard({
                       Informacoes tecnicas
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Cadastre os pares de rótulo e valor exibidos na página da máquina.
+                      Cadastre os campos tecnicos exibidos na pagina da maquina.
                     </p>
                   </div>
+
                   <Button variant="outline" onClick={addSpecification}>
                     Adicionar informacao
                   </Button>
                 </div>
+
                 <div className="space-y-3">
                   {machineForm.specifications.map((specification, index) => (
-                    <div key={specification.id} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                    <div
+                      key={specification.id}
+                      className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+                    >
                       <Input
                         value={specification.label}
                         onChange={(event) =>
-                          handleSpecificationChange(index, "label", event.target.value)
+                          handleSpecificationChange(
+                            index,
+                            "label",
+                            event.target.value
+                          )
                         }
-                        placeholder="Rótulo"
+                        placeholder="Rotulo"
                       />
                       <Input
                         value={specification.value}
                         onChange={(event) =>
-                          handleSpecificationChange(index, "value", event.target.value)
+                          handleSpecificationChange(
+                            index,
+                            "value",
+                            event.target.value
+                          )
                         }
                         placeholder="Valor"
                       />
@@ -813,7 +937,7 @@ export function AdminDashboard({
 
         {activeTab === "showcase" ? (
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-3xl border border-border bg-card p-6 lg:p-8 space-y-6">
+            <div className="space-y-6 rounded-3xl border border-border bg-card p-6 lg:p-8">
               <div>
                 <p className="text-sm text-muted-foreground">Destaque da home</p>
                 <h2 className="mt-2 text-2xl font-bold text-foreground">
@@ -832,7 +956,7 @@ export function AdminDashboard({
                       featuredMachineId: event.target.value || null,
                     }))
                   }
-                  className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                   <option value="">Nenhuma maquina selecionada</option>
                   {publishedMachines.map((machine) => (
@@ -844,7 +968,9 @@ export function AdminDashboard({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="showcaseEyebrow">Texto pequeno acima do titulo</Label>
+                <Label htmlFor="showcaseEyebrow">
+                  Texto pequeno acima do titulo
+                </Label>
                 <Input
                   id="showcaseEyebrow"
                   value={showcase.eyebrow}
@@ -909,12 +1035,14 @@ export function AdminDashboard({
                   {isSavingShowcase ? "Salvando..." : "Salvar destaque"}
                 </Button>
                 {showcaseFeedback ? (
-                  <p className="text-sm text-muted-foreground">{showcaseFeedback}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {showcaseFeedback}
+                  </p>
                 ) : null}
               </div>
             </div>
 
-            <div className="rounded-3xl border border-border bg-card overflow-hidden">
+            <div className="overflow-hidden rounded-3xl border border-border bg-card">
               {featuredMachine?.mainImage ? (
                 <div className="relative aspect-[4/3]">
                   <Image
@@ -926,22 +1054,24 @@ export function AdminDashboard({
                   />
                 </div>
               ) : (
-                <div className="aspect-[4/3] bg-secondary/30 flex items-center justify-center text-muted-foreground">
+                <div className="flex aspect-[4/3] items-center justify-center bg-secondary/30 text-muted-foreground">
                   Sem produto em destaque
                 </div>
               )}
+
               <div className="p-6 lg:p-8">
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
                   {showcase.eyebrow || featuredMachine?.badge || "Vitrine Routech"}
                 </p>
                 <h3 className="mt-3 text-2xl font-bold text-foreground">
-                  {showcase.title || featuredMachine?.title || "Selecione uma máquina"}
+                  {showcase.title || featuredMachine?.title || "Selecione uma maquina"}
                 </h3>
-                <p className="mt-3 text-muted-foreground leading-relaxed">
+                <p className="mt-3 leading-relaxed text-muted-foreground">
                   {showcase.description ||
                     featuredMachine?.shortDescription ||
-                    "Escolha uma máquina publicada para enxergar a prévia da vitrine principal."}
+                    "Escolha uma maquina publicada para ver a previa da vitrine principal."}
                 </p>
+
                 {featuredMachine ? (
                   <div className="mt-6">
                     {getMachineDisplayPrice(featuredMachine) ? (
@@ -960,7 +1090,7 @@ export function AdminDashboard({
                       </div>
                     ) : (
                       <p className="text-lg font-semibold text-foreground">
-                        Solicitar orçamento
+                        Solicitar orcamento
                       </p>
                     )}
                   </div>
@@ -975,13 +1105,10 @@ export function AdminDashboard({
             {quoteFeedback ? (
               <p className="text-sm text-muted-foreground">{quoteFeedback}</p>
             ) : null}
+
             {quotes.length > 0 ? (
               quotes.map((quote) => (
-                <QuoteCard
-                  key={quote.id}
-                  quote={quote}
-                  onSave={updateQuoteStatus}
-                />
+                <QuoteCard key={quote.id} quote={quote} onSave={updateQuoteStatus} />
               ))
             ) : (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
@@ -1030,10 +1157,11 @@ function QuoteCard({
           <div className="grid gap-2 text-sm text-muted-foreground">
             <p>Email: {quote.email}</p>
             <p>WhatsApp: {quote.whatsapp}</p>
-            <p>Empresa: {quote.company || "Não informado"}</p>
-            <p>Cidade: {quote.city || "Não informado"}</p>
+            <p>Empresa: {quote.company || "Nao informado"}</p>
+            <p>Cidade: {quote.city || "Nao informado"}</p>
             <p>Recebido em: {new Date(quote.createdAt).toLocaleString("pt-BR")}</p>
           </div>
+
           {quote.message ? (
             <div className="rounded-2xl bg-secondary/40 p-4 text-sm text-muted-foreground">
               {quote.message}
@@ -1047,7 +1175,7 @@ function QuoteCard({
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as QuoteStatus)}
-              className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="border-input h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <option value="new">Novo</option>
               <option value="contacted">Em contato</option>

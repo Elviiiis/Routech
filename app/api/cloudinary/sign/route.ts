@@ -11,8 +11,8 @@ function getCloudinaryEnvironment() {
   }
 }
 
-export async function POST() {
-  if (!(await isAdminAuthenticated())) {
+export async function POST(request: Request) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 

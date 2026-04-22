@@ -1,7 +1,12 @@
 "use client"
 
-import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app"
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics"
+import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app"
+import {
+  browserLocalPersistence,
+  getAuth,
+  setPersistence,
+} from "firebase/auth"
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -30,6 +35,50 @@ export function getFirebaseApp(): FirebaseApp | null {
   }
 
   return getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
+}
+
+let persistencePromise: Promise<void> | null = null
+
+export function getFirebaseAuth() {
+  const app = getFirebaseApp()
+
+  if (!app) {
+    return null
+  }
+
+  const auth = getAuth(app)
+
+  if (!persistencePromise && typeof window !== "undefined") {
+    persistencePromise = setPersistence(auth, browserLocalPersistence).catch(() => {
+      return
+    })
+  }
+
+  return auth
+}
+
+export async function getFirebaseAuthorizationHeaders() {
+  const auth = getFirebaseAuth()
+
+  if (!auth) {
+    throw new Error("Firebase Auth nao esta configurado.")
+  }
+
+  if (persistencePromise) {
+    await persistencePromise
+  }
+
+  const user = auth.currentUser
+
+  if (!user) {
+    throw new Error("Sua sessao expirou. Entre novamente.")
+  }
+
+  const token = await user.getIdToken()
+
+  return {
+    Authorization: `Bearer ${token}`,
+  }
 }
 
 let analyticsPromise: Promise<Analytics | null> | null = null

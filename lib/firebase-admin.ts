@@ -9,6 +9,7 @@ import {
   type App,
   type ServiceAccount,
 } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 
 function normalizePrivateKey(value: string | undefined) {
@@ -93,4 +94,8 @@ export function isFirestoreAdminConfigured() {
 
 export function getFirestoreAdmin() {
   return getFirestore(getFirebaseAdminApp())
+}
+
+export function getFirebaseAdminAuth() {
+  return getAuth(getFirebaseAdminApp())
 }

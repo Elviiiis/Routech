@@ -3,7 +3,7 @@ import { isAdminAuthenticated } from '@/lib/admin-auth'
 import { saveShowcase } from '@/lib/content-store'
 
 export async function PATCH(request: Request) {
-  if (!(await isAdminAuthenticated())) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 

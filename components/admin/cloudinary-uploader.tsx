@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { useRef, useState } from "react"
 import type { MachineImageAsset } from "@/lib/content-types"
+import { getFirebaseAuthorizationHeaders } from "@/lib/firebase-client"
 
 interface CloudinaryUploaderProps {
   label: string
@@ -24,6 +25,7 @@ interface CloudinarySignaturePayload {
 async function uploadToCloudinary(file: File) {
   const signResponse = await fetch("/api/cloudinary/sign", {
     method: "POST",
+    headers: await getFirebaseAuthorizationHeaders(),
   })
 
   const signPayload = (await signResponse.json().catch(() => null)) as
@@ -31,7 +33,7 @@ async function uploadToCloudinary(file: File) {
     | null
 
   if (!signResponse.ok || !signPayload) {
-    throw new Error(signPayload?.error || "Não foi possível assinar o upload.")
+    throw new Error(signPayload?.error || "Nao foi possivel autorizar o upload.")
   }
 
   const formData = new FormData()
@@ -93,13 +95,18 @@ export function CloudinaryUploader({
         onUploaded(image)
       }
 
-      setFeedback(files.length > 1 ? "Imagens enviadas com sucesso." : "Imagem enviada com sucesso.")
+      setFeedback(
+        files.length > 1
+          ? "Imagens enviadas com sucesso."
+          : "Imagem enviada com sucesso."
+      )
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : "Não foi possível concluir o upload."
+        error instanceof Error ? error.message : "Nao foi possivel concluir o upload."
       )
     } finally {
       setIsUploading(false)
+
       if (inputRef.current) {
         inputRef.current.value = ""
       }

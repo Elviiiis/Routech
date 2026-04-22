@@ -24,7 +24,7 @@ const showcaseDocumentId = 'showcase'
 type DataProvider = 'file' | 'firestore'
 
 function getDataProvider(): DataProvider {
-  return process.env.ROUTECH_DATA_PROVIDER === 'file' ? 'file' : 'firestore'
+  return process.env.ROUTECH_DATA_PROVIDER === 'firestore' ? 'firestore' : 'file'
 }
 
 function assertFirestoreReady() {

@@ -4,7 +4,7 @@ import { readRoutechContentStore, saveMachine } from '@/lib/content-store'
 import { sanitizeMachinePayload } from '@/lib/machine-utils'
 
 export async function POST(request: Request) {
-  if (!(await isAdminAuthenticated())) {
+  if (!(await isAdminAuthenticated(request))) {
     return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 

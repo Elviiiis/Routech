@@ -2,12 +2,15 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { signInWithEmailAndPassword } from "firebase/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { getFirebaseAuth } from "@/lib/firebase-client"
 
 export function AdminLogin() {
   const router = useRouter()
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedback, setFeedback] = useState("")
@@ -17,25 +20,21 @@ export function AdminLogin() {
     setIsSubmitting(true)
     setFeedback("")
 
-    const response = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ password }),
-    })
+    const auth = getFirebaseAuth()
 
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null
-
-    if (!response.ok) {
-      setFeedback(payload?.error || "Não foi possível validar o acesso.")
+    if (!auth) {
+      setFeedback("Firebase Auth nao esta configurado neste ambiente.")
       setIsSubmitting(false)
       return
     }
 
-    router.refresh()
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password)
+      router.refresh()
+    } catch {
+      setFeedback("Nao foi possivel entrar. Verifique email e senha.")
+      setIsSubmitting(false)
+    }
   }
 
   const handleGoToSite = () => {
@@ -43,8 +42,8 @@ export function AdminLogin() {
   }
 
   return (
-    <main className="min-h-screen bg-background flex items-center">
-      <div className="max-w-md mx-auto w-full px-4 sm:px-6 lg:px-8">
+    <main className="flex min-h-screen items-center bg-background">
+      <div className="mx-auto w-full max-w-md px-4 sm:px-6 lg:px-8">
         <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-primary">
             Painel Routech
@@ -53,11 +52,23 @@ export function AdminLogin() {
             Entrar na area de edicao
           </h1>
           <p className="mt-3 text-muted-foreground">
-            Use a senha para abrir a area onde voce altera maquinas,
-            destaque da home e contatos recebidos.
+            Use o email e a senha cadastrados no Firebase para editar as
+            maquinas, o destaque da home e os contatos recebidos.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="voce@empresa.com"
+                required
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <Input
@@ -65,14 +76,26 @@ export function AdminLogin() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Digite a senha do painel"
+                placeholder="Digite sua senha"
                 required
               />
             </div>
-            <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? "Entrando..." : "Entrar"}
             </Button>
-            <Button type="button" variant="outline" size="lg" className="w-full" onClick={handleGoToSite}>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full"
+              onClick={handleGoToSite}
+            >
               Voltar para o site
             </Button>
             {feedback ? (
