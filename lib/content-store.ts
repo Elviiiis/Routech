@@ -1,7 +1,7 @@
-import 'server-only'
+import "server-only"
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import path from 'node:path'
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import path from "node:path"
 import {
   defaultRoutechContentStore,
   type Machine,
@@ -10,29 +10,37 @@ import {
   type QuoteRequest,
   type RoutechContentStore,
   type ShowcaseSettings,
-} from '@/lib/content-types'
-import { getFirestoreAdmin, isFirestoreAdminConfigured } from '@/lib/firebase-admin'
+} from "@/lib/content-types"
+import { getFirestoreAdmin, isFirestoreAdminConfigured } from "@/lib/firebase-admin"
 
-const dataDirectory = path.join(process.cwd(), 'data')
-const storePath = path.join(dataDirectory, 'routech-content.json')
+const dataDirectory = path.join(process.cwd(), "data")
+const storePath = path.join(dataDirectory, "routech-content.json")
 
-const machinesCollection = 'machines'
-const quotesCollection = 'quotes'
-const settingsCollection = 'settings'
-const showcaseDocumentId = 'showcase'
+const machinesCollection = "machines"
+const quotesCollection = "quotes"
+const settingsCollection = "settings"
+const showcaseDocumentId = "showcase"
 
-type DataProvider = 'file' | 'firestore'
+type DataProvider = "file" | "firestore"
 
 function getDataProvider(): DataProvider {
-  return process.env.ROUTECH_DATA_PROVIDER === 'firestore' ? 'firestore' : 'file'
+  return process.env.ROUTECH_DATA_PROVIDER === "firestore" ? "firestore" : "file"
+}
+
+function shouldReadFromFirestore() {
+  return getDataProvider() === "firestore" && isFirestoreAdminConfigured()
 }
 
 function assertFirestoreReady() {
   if (!isFirestoreAdminConfigured()) {
     throw new Error(
-      'Firestore definido como banco principal, mas as credenciais administrativas não foram configuradas.'
+      "Firestore foi definido como banco principal, mas as credenciais administrativas nao foram configuradas."
     )
   }
+}
+
+function logFirestoreFallback(message: string, error: unknown) {
+  console.warn(`[routech] ${message}`, error)
 }
 
 function normalizeImageAsset(
@@ -64,18 +72,18 @@ function normalizeSpecification(
 
 function normalizeMachine(raw: Partial<Machine>): Machine {
   return {
-    id: raw.id || '',
-    slug: raw.slug || '',
-    title: raw.title || '',
-    shortDescription: raw.shortDescription || '',
-    description: raw.description || '',
-    category: raw.category || 'Máquina CNC',
-    badge: raw.badge || '',
-    priceMode: raw.priceMode === 'visible' ? 'visible' : 'quote',
-    price: raw.price || '',
-    compareAtPrice: raw.compareAtPrice || '',
-    priceLabel: raw.priceLabel || 'Solicite um orçamento',
-    ctaLabel: raw.ctaLabel || 'Solicitar orçamento',
+    id: raw.id || "",
+    slug: raw.slug || "",
+    title: raw.title || "",
+    shortDescription: raw.shortDescription || "",
+    description: raw.description || "",
+    category: raw.category || "Maquina CNC",
+    badge: raw.badge || "",
+    priceMode: raw.priceMode === "visible" ? "visible" : "quote",
+    price: raw.price || "",
+    compareAtPrice: raw.compareAtPrice || "",
+    priceLabel: raw.priceLabel || "Solicite um orcamento",
+    ctaLabel: raw.ctaLabel || "Solicitar orcamento",
     published: Boolean(raw.published),
     mainImage: normalizeImageAsset(raw.mainImage),
     gallery: Array.isArray(raw.gallery)
@@ -108,22 +116,22 @@ function normalizeShowcase(raw: Partial<ShowcaseSettings> | null | undefined) {
 
 function normalizeQuote(raw: Partial<QuoteRequest>): QuoteRequest {
   return {
-    id: raw.id || '',
+    id: raw.id || "",
     machineId: raw.machineId || null,
-    machineTitle: raw.machineTitle || 'Orçamento geral',
-    customerName: raw.customerName || '',
-    email: raw.email || '',
-    whatsapp: raw.whatsapp || '',
-    company: raw.company || '',
-    city: raw.city || '',
-    message: raw.message || '',
+    machineTitle: raw.machineTitle || "Orcamento geral",
+    customerName: raw.customerName || "",
+    email: raw.email || "",
+    whatsapp: raw.whatsapp || "",
+    company: raw.company || "",
+    city: raw.city || "",
+    message: raw.message || "",
     status:
-      raw.status === 'contacted' ||
-      raw.status === 'won' ||
-      raw.status === 'lost'
+      raw.status === "contacted" ||
+      raw.status === "won" ||
+      raw.status === "lost"
         ? raw.status
-        : 'new',
-    notes: raw.notes || '',
+        : "new",
+    notes: raw.notes || "",
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
   }
@@ -147,23 +155,18 @@ function hasMeaningfulStoreContent(store: RoutechContentStore) {
   )
 }
 
-async function ensureFileStore() {
+async function ensureFileStoreDirectory() {
   await mkdir(dataDirectory, { recursive: true })
-
-  try {
-    await readFile(storePath, 'utf8')
-  } catch {
-    await writeFile(
-      storePath,
-      JSON.stringify(defaultRoutechContentStore, null, 2),
-      'utf8'
-    )
-  }
 }
 
 async function readFileContentStore(): Promise<RoutechContentStore> {
-  await ensureFileStore()
-  const raw = await readFile(storePath, 'utf8')
+  let raw: string
+
+  try {
+    raw = await readFile(storePath, "utf8")
+  } catch {
+    return structuredClone(defaultRoutechContentStore)
+  }
 
   try {
     const parsed = JSON.parse(raw) as Partial<RoutechContentStore>
@@ -183,9 +186,9 @@ async function readFileContentStore(): Promise<RoutechContentStore> {
 }
 
 async function writeFileContentStore(content: RoutechContentStore): Promise<void> {
-  await ensureFileStore()
+  await ensureFileStoreDirectory()
   const tempPath = `${storePath}.tmp`
-  await writeFile(tempPath, JSON.stringify(content, null, 2), 'utf8')
+  await writeFile(tempPath, JSON.stringify(content, null, 2), "utf8")
   await rename(tempPath, storePath)
 }
 
@@ -257,17 +260,25 @@ async function readFirestoreContentStore(): Promise<RoutechContentStore> {
 }
 
 export async function readRoutechContentStore(): Promise<RoutechContentStore> {
-  if (getDataProvider() === 'file') {
+  if (!shouldReadFromFirestore()) {
     return readFileContentStore()
   }
 
-  return readFirestoreContentStore()
+  try {
+    return await readFirestoreContentStore()
+  } catch (error) {
+    logFirestoreFallback(
+      "Falha ao ler o Firestore; usando o conteudo local como fallback.",
+      error
+    )
+    return readFileContentStore()
+  }
 }
 
 export async function writeRoutechContentStore(
   content: RoutechContentStore
 ): Promise<void> {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     await writeFileContentStore(content)
     return
   }
@@ -293,49 +304,67 @@ export async function writeRoutechContentStore(
 }
 
 export async function getPublicMachines() {
-  if (getDataProvider() === 'file') {
+  if (!shouldReadFromFirestore()) {
     const store = await readFileContentStore()
     return store.machines.filter((machine) => machine.published)
   }
 
-  assertFirestoreReady()
-  await bootstrapFirestoreFromFileStore()
+  try {
+    assertFirestoreReady()
+    await bootstrapFirestoreFromFileStore()
 
-  const snapshot = await getFirestoreAdmin()
-    .collection(machinesCollection)
-    .where('published', '==', true)
-    .get()
+    const snapshot = await getFirestoreAdmin()
+      .collection(machinesCollection)
+      .where("published", "==", true)
+      .get()
 
-  return snapshot.docs
-    .map((doc) => normalizeMachine(doc.data() as Partial<Machine>))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    return snapshot.docs
+      .map((doc) => normalizeMachine(doc.data() as Partial<Machine>))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  } catch (error) {
+    logFirestoreFallback(
+      "Falha ao ler as maquinas publicas no Firestore; usando fallback local.",
+      error
+    )
+    const store = await readFileContentStore()
+    return store.machines.filter((machine) => machine.published)
+  }
 }
 
 export async function getMachineBySlug(slug: string) {
-  if (getDataProvider() === 'file') {
+  if (!shouldReadFromFirestore()) {
     const machines = await getPublicMachines()
     return machines.find((machine) => machine.slug === slug)
   }
 
-  assertFirestoreReady()
-  await bootstrapFirestoreFromFileStore()
+  try {
+    assertFirestoreReady()
+    await bootstrapFirestoreFromFileStore()
 
-  const snapshot = await getFirestoreAdmin()
-    .collection(machinesCollection)
-    .where('slug', '==', slug)
-    .limit(1)
-    .get()
+    const snapshot = await getFirestoreAdmin()
+      .collection(machinesCollection)
+      .where("slug", "==", slug)
+      .limit(1)
+      .get()
 
-  if (snapshot.empty) {
-    return undefined
+    if (snapshot.empty) {
+      return undefined
+    }
+
+    const machine = normalizeMachine(snapshot.docs[0].data() as Partial<Machine>)
+    return machine.published ? machine : undefined
+  } catch (error) {
+    logFirestoreFallback(
+      "Falha ao ler a maquina por slug no Firestore; usando fallback local.",
+      error
+    )
+    const machines = await getPublicMachines()
+    return machines.find((machine) => machine.slug === slug)
   }
-
-  const machine = normalizeMachine(snapshot.docs[0].data() as Partial<Machine>)
-  return machine.published ? machine : undefined
 }
 
 export async function saveMachine(machine: Machine) {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     const store = await readFileContentStore()
     const index = store.machines.findIndex((entry) => entry.id === machine.id)
 
@@ -350,16 +379,13 @@ export async function saveMachine(machine: Machine) {
   }
 
   assertFirestoreReady()
-  await getFirestoreAdmin()
-    .collection(machinesCollection)
-    .doc(machine.id)
-    .set(machine)
+  await getFirestoreAdmin().collection(machinesCollection).doc(machine.id).set(machine)
 
   return machine
 }
 
 export async function deleteMachine(machineId: string) {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     const store = await readFileContentStore()
     store.machines = store.machines.filter((machine) => machine.id !== machineId)
 
@@ -386,9 +412,7 @@ export async function deleteMachine(machineId: string) {
 
   batch.delete(db.collection(machinesCollection).doc(machineId))
 
-  const showcaseReference = db
-    .collection(settingsCollection)
-    .doc(showcaseDocumentId)
+  const showcaseReference = db.collection(settingsCollection).doc(showcaseDocumentId)
   const showcaseSnapshot = await showcaseReference.get()
 
   if (showcaseSnapshot.exists) {
@@ -410,7 +434,7 @@ export async function deleteMachine(machineId: string) {
 
   const quotesSnapshot = await db
     .collection(quotesCollection)
-    .where('machineId', '==', machineId)
+    .where("machineId", "==", machineId)
     .get()
 
   for (const quoteDocument of quotesSnapshot.docs) {
@@ -427,7 +451,7 @@ export async function deleteMachine(machineId: string) {
 }
 
 export async function saveShowcase(showcase: ShowcaseSettings) {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     const store = await readFileContentStore()
     store.showcase = showcase
     await writeFileContentStore(store)
@@ -444,7 +468,7 @@ export async function saveShowcase(showcase: ShowcaseSettings) {
 }
 
 export async function createQuote(quote: QuoteRequest) {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     const store = await readFileContentStore()
     store.quotes.unshift(quote)
     await writeFileContentStore(store)
@@ -452,19 +476,16 @@ export async function createQuote(quote: QuoteRequest) {
   }
 
   assertFirestoreReady()
-  await getFirestoreAdmin()
-    .collection(quotesCollection)
-    .doc(quote.id)
-    .set(quote)
+  await getFirestoreAdmin().collection(quotesCollection).doc(quote.id).set(quote)
 
   return quote
 }
 
 export async function updateQuote(
   quoteId: string,
-  updates: Partial<Pick<QuoteRequest, 'status' | 'notes'>>
+  updates: Partial<Pick<QuoteRequest, "status" | "notes">>
 ) {
-  if (getDataProvider() === 'file') {
+  if (getDataProvider() === "file") {
     const store = await readFileContentStore()
     const index = store.quotes.findIndex((quote) => quote.id === quoteId)
 
