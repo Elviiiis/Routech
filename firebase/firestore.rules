@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function validMachineDocument(data) {
+      return data.keys().hasOnly([
+          'id',
+          'slug',
+          'title',
+          'shortDescription',
+          'description',
+          'category',
+          'badge',
+          'priceMode',
+          'price',
+          'compareAtPrice',
+          'priceLabel',
+          'ctaLabel',
+          'published',
+          'mainImage',
+          'gallery',
+          'features',
+          'specifications',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.id is string &&
+        data.slug is string &&
+        data.title is string &&
+        data.shortDescription is string &&
+        data.description is string &&
+        data.category is string &&
+        data.badge is string &&
+        data.priceMode in ['visible', 'quote'] &&
+        data.price is string &&
+        data.compareAtPrice is string &&
+        data.priceLabel is string &&
+        data.ctaLabel is string &&
+        data.published is bool &&
+        (data.mainImage == null ||
+          (
+            data.mainImage is map &&
+            data.mainImage.keys().hasOnly(['url', 'publicId']) &&
+            data.mainImage.url is string &&
+            data.mainImage.publicId is string
+          )) &&
+        data.gallery is list &&
+        data.features is list &&
+        data.specifications is list &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        data.title.size() > 0 &&
+        data.title.size() <= 160 &&
+        data.slug.size() > 0 &&
+        data.slug.size() <= 180 &&
+        data.shortDescription.size() > 0 &&
+        data.shortDescription.size() <= 600 &&
+        data.description.size() > 0 &&
+        data.description.size() <= 5000 &&
+        data.features.size() <= 20 &&
+        data.gallery.size() <= 20 &&
+        data.specifications.size() <= 30;
+    }
+
+    function validShowcaseDocument(data) {
+      return data.keys().hasOnly([
+          'featuredMachineId',
+          'eyebrow',
+          'title',
+          'description',
+          'ctaLabel'
+        ]) &&
+        (data.featuredMachineId == null || data.featuredMachineId is string) &&
+        data.eyebrow is string &&
+        data.title is string &&
+        data.description is string &&
+        data.ctaLabel is string &&
+        data.eyebrow.size() <= 120 &&
+        data.title.size() <= 180 &&
+        data.description.size() <= 1000 &&
+        data.ctaLabel.size() <= 80;
+    }
+
+    function validQuoteCreate(data) {
+      return data.keys().hasOnly([
+          'id',
+          'machineId',
+          'machineTitle',
+          'customerName',
+          'email',
+          'whatsapp',
+          'company',
+          'city',
+          'message',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.id is string &&
+        (data.machineId == null || data.machineId is string) &&
+        data.machineTitle is string &&
+        data.customerName is string &&
+        data.email is string &&
+        data.whatsapp is string &&
+        data.company is string &&
+        data.city is string &&
+        data.message is string &&
+        data.status == 'new' &&
+        data.notes == '' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        data.customerName.size() > 1 &&
+        data.customerName.size() <= 120 &&
+        data.email.size() > 3 &&
+        data.email.size() <= 160 &&
+        data.whatsapp.size() > 7 &&
+        data.whatsapp.size() <= 30 &&
+        data.company.size() <= 160 &&
+        data.city.size() <= 120 &&
+        data.message.size() <= 2000 &&
+        data.machineTitle.size() <= 160;
+    }
+
+    function validQuoteAdminUpdate(data) {
+      return data.keys().hasOnly([
+          'id',
+          'machineId',
+          'machineTitle',
+          'customerName',
+          'email',
+          'whatsapp',
+          'company',
+          'city',
+          'message',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.status in ['new', 'contacted', 'won', 'lost'] &&
+        data.notes is string &&
+        data.notes.size() <= 3000;
+    }
+
+    match /machines/{machineId} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update: if isAdmin() && validMachineDocument(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/showcase {
+      allow read: if true;
+      allow create, update: if isAdmin() && validShowcaseDocument(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /quotes/{quoteId} {
+      allow create: if validQuoteCreate(request.resource.data);
+      allow read: if isAdmin();
+      allow update: if isAdmin() && validQuoteAdminUpdate(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

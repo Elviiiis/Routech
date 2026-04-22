@@ -1,0 +1,73 @@
+{
+  "machines": [
+    {
+      "id": "c01cf58d-3df9-4fc4-8910-4db1e0625b62",
+      "slug": "teste",
+      "title": "teste",
+      "shortDescription": "teste",
+      "description": "teste",
+      "category": "Máquina CNC",
+      "badge": "teste",
+      "priceMode": "quote",
+      "price": "",
+      "compareAtPrice": "",
+      "priceLabel": "Solicite um orçamento",
+      "ctaLabel": "Solicitar orçamento",
+      "published": true,
+      "mainImage": {
+        "url": "https://res.cloudinary.com/dssxcnlfe/image/upload/v1776874258/routech/og6b66dknpuofjvc4uyp.png",
+        "publicId": "routech/og6b66dknpuofjvc4uyp"
+      },
+      "gallery": [
+        {
+          "url": "https://res.cloudinary.com/dssxcnlfe/image/upload/v1776874266/routech/skywrbq7gnoiiumc8yjr.png",
+          "publicId": "routech/skywrbq7gnoiiumc8yjr"
+        },
+        {
+          "url": "https://res.cloudinary.com/dssxcnlfe/image/upload/v1776874267/routech/pofmmo9y0wypqu3lpjo8.png",
+          "publicId": "routech/pofmmo9y0wypqu3lpjo8"
+        },
+        {
+          "url": "https://res.cloudinary.com/dssxcnlfe/image/upload/v1776874273/routech/vwrwm9bnj1mhw2u5wsew.png",
+          "publicId": "routech/vwrwm9bnj1mhw2u5wsew"
+        }
+      ],
+      "features": [
+        "teste"
+      ],
+      "specifications": [
+        {
+          "id": "d6a80fdb-8775-4b96-9c8f-9ee8cfa70495",
+          "label": "teste",
+          "value": "teste"
+        }
+      ],
+      "createdAt": "2026-04-22T16:03:05.289Z",
+      "updatedAt": "2026-04-22T16:11:19.469Z"
+    }
+  ],
+  "showcase": {
+    "featuredMachineId": "c01cf58d-3df9-4fc4-8910-4db1e0625b62",
+    "eyebrow": "Vitrine Routech",
+    "title": "ROUTECH",
+    "description": "uau",
+    "ctaLabel": "Encomende ja"
+  },
+  "quotes": [
+    {
+      "id": "374900d4-66a6-4a5f-ae1e-ebc25ef26a11",
+      "machineId": "c01cf58d-3df9-4fc4-8910-4db1e0625b62",
+      "machineTitle": "teste",
+      "customerName": "teste testado testao",
+      "email": "teste@emaiiil.com",
+      "whatsapp": "45984320293",
+      "company": "teste ltda",
+      "city": "testenopolis",
+      "message": "testar",
+      "status": "new",
+      "notes": "",
+      "createdAt": "2026-04-22T16:05:15.960Z",
+      "updatedAt": "2026-04-22T16:05:50.420Z"
+    }
+  ]
+}
